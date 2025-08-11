@@ -1,0 +1,38 @@
+name: Build Android APK (Debug)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  build-android-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Kalau folder android/ belum ada, ini akan dibuat otomatis
+      - name: Ensure Android platform folder exists
+        run: flutter create . --platforms=android
+
+      - name: Build APK (debug)
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AERYN-SALON-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
