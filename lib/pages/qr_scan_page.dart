@@ -1,41 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/db_service.dart';
 import '../models/attendance.dart';
 
 class QRScanPage extends StatefulWidget {
   const QRScanPage({super.key});
-
   @override
   State<QRScanPage> createState() => _QRScanPageState();
 }
 
 class _QRScanPageState extends State<QRScanPage> {
-  final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-  QRViewController? controller;
+  final MobileScannerController controller = MobileScannerController(
+    formats: [BarcodeFormat.qrCode],
+    detectionSpeed: DetectionSpeed.normal,
+    facing: CameraFacing.back,
+  );
   bool _busy = false;
 
-  @override
-  void reassemble() {
-    super.reassemble();
-    controller?.pauseCamera();
-    controller?.resumeCamera();
-  }
-
-  void _onQR(QRViewController c) {
-    controller = c;
-    c.scannedDataStream.listen((scanData) async {
-      if (_busy) return;
-      _busy = true;
-      final code = scanData.code;
-      if (code == null) { _busy = false; return; }
-      await _handleScan(code);
-      _busy = false;
-    });
-  }
-
   Future<void> _handleScan(String code) async {
-    // Alternate IN/OUT based on last record
     final list = await DBService().getAttendanceByEmployee(code);
     final nextType = list.isNotEmpty && list.first.type == 'IN' ? 'OUT' : 'IN';
     await DBService().addAttendance(Attendance(employeeCode: code, checkTime: DateTime.now(), type: nextType));
@@ -46,19 +28,31 @@ class _QRScanPageState extends State<QRScanPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan QR')),
+      appBar: AppBar(
+        title: const Text('Scan QR'),
+        actions: [
+          IconButton(onPressed: () => controller.toggleTorch(), icon: const Icon(Icons.flash_on)),
+          IconButton(onPressed: () => controller.switchCamera(), icon: const Icon(Icons.cameraswitch)),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
             flex: 4,
-            child: QRView(
-              key: qrKey,
-              onQRViewCreated: _onQR,
+            child: MobileScanner(
+              controller: controller,
+              onDetect: (capture) async {
+                if (_busy) return;
+                final barcodes = capture.barcodes;
+                if (barcodes.isEmpty) return;
+                final value = barcodes.first.rawValue;
+                if (value == null || value.isEmpty) return;
+                _busy = true;
+                try { await _handleScan(value); } finally { _busy = false; }
+              },
             ),
           ),
-          const Expanded(
-            child: Center(child: Text('Arahkan kamera ke QR karyawan')),
-          ),
+          const Expanded(child: Center(child: Text('Arahkan kamera ke QR karyawan'))),
         ],
       ),
     );
@@ -66,7 +60,7 @@ class _QRScanPageState extends State<QRScanPage> {
 
   @override
   void dispose() {
-    controller?.dispose();
+    controller.dispose();
     super.dispose();
   }
 }
