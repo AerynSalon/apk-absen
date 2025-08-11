@@ -4,32 +4,54 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
-  pull_request:
 
 jobs:
   build-android-debug:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Java 17 (AGP compatible)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # bisa pin ke versi tertentu jika mau:
+          # flutter-version: '3.22.3'
 
-      - name: Flutter version
-        run: flutter --version
+      - name: Flutter doctor (quick diag)
+        run: flutter doctor -v
 
       - name: Install dependencies
         run: flutter pub get
 
-      # Kalau folder android/ belum ada, ini akan dibuat otomatis
+      # Buat folder android kalau belum ada
       - name: Ensure Android platform folder exists
         run: flutter create . --platforms=android
 
+      # Accept Android SDK licenses (paksa, agar build tools boleh dipakai)
+      - name: Accept Android SDK licenses
+        run: yes | "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+      # Gradle tuning biar lebih stabil di CI
+      - name: Configure Gradle JVM args
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx3g -Dkotlin.daemon.jvm.options=-Xmx1g" >> ~/.gradle/gradle.properties
+          echo "android.useAndroidX=true" >> ~/.gradle/gradle.properties
+          echo "android.enableJetifier=true" >> ~/.gradle/gradle.properties
+
       - name: Build APK (debug)
-        run: flutter build apk --debug
+        run: flutter build apk --debug --no-shrink
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
